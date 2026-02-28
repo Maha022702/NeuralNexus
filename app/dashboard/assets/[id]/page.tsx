@@ -2,11 +2,11 @@
 import { useEffect, useState } from 'react'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
-import { Asset, VectorContext } from '@/lib/types/assets'
+import { Asset, VectorContext, InstalledApp } from '@/lib/types/assets'
 import { getRiskLevel, DIMENSION_META } from '@/lib/risk-engine'
 import {
-  Server, Monitor, Wifi, Database, Cloud, Cpu,
-  ArrowLeft, Shield, AlertTriangle, ChevronRight, ChevronDown, Clock,
+  Server, Monitor, Wifi, Database, Cloud, Cpu, Package,
+  ArrowLeft, Shield, AlertTriangle, ChevronRight, ChevronDown, Clock, Search,
 } from 'lucide-react'
 
 const TYPE_ICONS: Record<string, React.ElementType> = {
@@ -112,6 +112,153 @@ function DimCard({
           <p className="text-slate-700 text-xs pt-2 italic border-t border-slate-800/50">{dim.desc}</p>
         </div>
       )}
+    </div>
+  )
+}
+
+// ── Installed Apps Panel ──────────────────────────────────────────────────────
+const CAT_COLORS: Record<string, string> = {
+  web:       'text-blue-400 bg-blue-500/10 border-blue-500/20',
+  database:  'text-yellow-400 bg-yellow-500/10 border-yellow-500/20',
+  runtime:   'text-emerald-400 bg-emerald-500/10 border-emerald-500/20',
+  devtools:  'text-purple-400 bg-purple-500/10 border-purple-500/20',
+  network:   'text-cyan-400 bg-cyan-500/10 border-cyan-500/20',
+  security:  'text-red-400 bg-red-500/10 border-red-500/20',
+  container: 'text-orange-400 bg-orange-500/10 border-orange-500/20',
+  system:    'text-slate-400 bg-slate-700/30 border-slate-600/20',
+}
+
+function InstalledAppsPanel({ apps }: { apps: InstalledApp[] }) {
+  const [search, setSearch] = useState('')
+  const [catFilter, setCatFilter] = useState('all')
+
+  const categories = Array.from(new Set(apps.map(a => a.category))).sort()
+  const suidCount  = apps.filter(a => a.suid).length
+
+  const filtered = apps.filter(a => {
+    const q = search.toLowerCase()
+    const matchSearch = !q || a.name.toLowerCase().includes(q) || a.version.toLowerCase().includes(q) || a.path.toLowerCase().includes(q)
+    const matchCat    = catFilter === 'all' || a.category === catFilter
+    return matchSearch && matchCat
+  })
+
+  return (
+    <div className="glass rounded-2xl border border-slate-700/30 p-5 space-y-4">
+      {/* Header */}
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <h2 className="text-white font-semibold flex items-center gap-2">
+          <Package className="w-5 h-5 text-cyan-400" />
+          Installed Applications
+          <span className="px-2 py-0.5 text-xs bg-slate-800 text-slate-400 rounded-full border border-slate-700">
+            {apps.length} packages
+          </span>
+          {suidCount > 0 && (
+            <span title="SUID binaries can be a privilege escalation risk" className="px-2 py-0.5 text-xs bg-red-500/10 text-red-400 rounded-full border border-red-500/20">
+              ⚠ {suidCount} SUID
+            </span>
+          )}
+        </h2>
+        <div className="relative">
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3 h-3 text-slate-500" />
+          <input
+            type="text"
+            placeholder="Search packages…"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            className="pl-7 pr-3 py-1.5 bg-slate-900 border border-slate-700 focus:border-cyan-500 rounded-lg text-xs text-white placeholder-slate-600 focus:outline-none w-48 transition-colors"
+          />
+        </div>
+      </div>
+
+      {/* Category filter tabs */}
+      <div className="flex flex-wrap gap-1.5">
+        {(['all', ...categories] as string[]).map(c => (
+          <button
+            key={c}
+            onClick={() => setCatFilter(c)}
+            className={`px-2.5 py-1 text-xs rounded-lg capitalize transition-all border ${
+              catFilter === c
+                ? 'bg-cyan-500/20 border-cyan-500/40 text-cyan-300'
+                : 'bg-slate-800/50 border-slate-700/50 text-slate-500 hover:text-slate-300'
+            }`}
+          >
+            {c === 'all'
+              ? `All (${apps.length})`
+              : `${c} (${apps.filter(a => a.category === c).length})`
+            }
+          </button>
+        ))}
+      </div>
+
+      {/* Table */}
+      <div className="rounded-xl border border-slate-800 overflow-hidden">
+        {/* Column headers */}
+        <div className="grid grid-cols-12 gap-2 px-4 py-2.5 bg-slate-900/80 text-slate-500 text-xs font-semibold uppercase tracking-wide border-b border-slate-800">
+          <span className="col-span-3">Package</span>
+          <span className="col-span-2">Version</span>
+          <span className="col-span-3">Binary Path</span>
+          <span className="col-span-2">Permissions</span>
+          <span className="col-span-2">Owner : Group</span>
+        </div>
+
+        {/* Rows */}
+        <div className="max-h-96 overflow-y-auto divide-y divide-slate-800/50">
+          {filtered.length === 0 ? (
+            <p className="text-slate-600 text-xs py-10 text-center">
+              No packages match your filter
+            </p>
+          ) : (
+            filtered.map(app => (
+              <div
+                key={app.name}
+                className={`grid grid-cols-12 gap-2 px-4 py-2.5 text-xs transition-colors hover:bg-slate-800/30 ${
+                  app.suid ? 'bg-red-500/5 hover:bg-red-500/10' : ''
+                }`}
+              >
+                {/* Name + category badge */}
+                <div className="col-span-3 flex items-center gap-1.5 min-w-0">
+                  <span className={`px-1.5 py-0.5 rounded text-xs border flex-shrink-0 ${
+                    CAT_COLORS[app.category] ?? CAT_COLORS.system
+                  }`}>
+                    {app.category}
+                  </span>
+                  <span className="text-white font-medium truncate">{app.name}</span>
+                  {app.suid && (
+                    <span title="SUID bit set — potential privilege escalation risk" className="text-red-400 flex-shrink-0">⚠</span>
+                  )}
+                </div>
+
+                {/* Version */}
+                <div className="col-span-2 text-slate-400 font-mono truncate">{app.version || '—'}</div>
+
+                {/* Path */}
+                <div className="col-span-3 text-slate-500 font-mono truncate">{app.path || '—'}</div>
+
+                {/* Permissions */}
+                <div className="col-span-2">
+                  <span className={`font-mono tracking-wider ${
+                    app.suid ? 'text-red-400' : app.permissions.startsWith('rwx') ? 'text-yellow-400' : 'text-slate-400'
+                  }`}>
+                    {app.permissions || '—'}
+                  </span>
+                </div>
+
+                {/* Owner:Group */}
+                <div className="col-span-2 text-slate-500 font-mono truncate">
+                  {app.owner}:{app.group}
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+
+        {filtered.length > 0 && (
+          <div className="px-4 py-2 bg-slate-900/50 border-t border-slate-800 text-slate-600 text-xs">
+            Showing {filtered.length} of {apps.length} packages
+            {suidCount > 0 && <span className="text-red-500/70 ml-3">⚠ SUID binaries can allow privilege escalation — review carefully</span>}
+          </div>
+        )}
+      </div>
     </div>
   )
 }
@@ -310,6 +457,11 @@ export default function AssetDetailPage() {
           </>
         )}
       </div>
+
+      {/* ── Installed Applications Panel ── */}
+      {hasVector && Array.isArray((vc?.d11_application as Record<string, unknown>)?.apps) && (
+        <InstalledAppsPanel apps={(vc!.d11_application as unknown as { apps: InstalledApp[] }).apps} />
+      )}
     </div>
   )
 }

@@ -117,6 +117,21 @@ REMOTE_TOOLS=${REMOTE_TOOLS%,}
 CRYPTO_RISK=false
 [[ $(ps aux 2>/dev/null | grep -cE "xmrig|cryptominer|minerd") -gt 0 ]] && CRYPTO_RISK=true
 
+# Installed apps — collect name+version, filter out low-level libs
+if command -v dpkg-query &>/dev/null; then
+  INSTALLED_APPS_RAW=$(dpkg-query -W -f='${Package}\t${Version}\n' 2>/dev/null | \
+    grep -vE '^(lib[^p]|python3-[a-z]|perl-|fonts-|linux-image|linux-headers|linux-modules|linux-generic|tzdata|locales|debconf|dconf-|dictionaries|xfonts-|x11-|xorg|gnome-shell|gnome-session|kde-|plasma-|libreoffice-|thunderbird-locale-|language-pack-|gir1|hicolor|shared-mime|dbus-x11|gcc-[0-9]|cpp-[0-9]|binutils-[a-z])' | \
+    head -80)
+elif command -v rpm &>/dev/null; then
+  INSTALLED_APPS_RAW=$(rpm -qa --queryformat '%{NAME}\t%{VERSION}-%{RELEASE}\n' 2>/dev/null | \
+    grep -vE '^(lib[^p]|python3-[a-z]|perl-|fonts-|kernel-|firmware-|glibc-|ncurses-|setup-|tzdata|basesystem|shadow-utils|coreutils|filesystem)' | \
+    head -80)
+elif command -v brew &>/dev/null; then
+  INSTALLED_APPS_RAW=$(brew list --versions 2>/dev/null | awk '{print $1"\t"$2}' | head -80)
+else
+  INSTALLED_APPS_RAW=""
+fi
+
 # D12 Patch
 KERNEL_VER=$(uname -r)
 DAYS_UPDATE=0
@@ -160,12 +175,17 @@ export _GEO_COUNTRY="$GEO_COUNTRY" _GEO_CITY="$GEO_CITY" _GEO_ISP="$GEO_ISP" _GE
 export _BYTES_SENT_MB="$BYTES_SENT_MB" _BYTES_RECV_MB="$BYTES_RECV_MB"
 export _ACTIVE_TCP="$ACTIVE_TCP" _TCP_ESTAB="$TCP_ESTAB" _LISTENING="$LISTENING"
 export _PKG_COUNT="$PKG_COUNT" _DEV_TOOLS="$DEV_TOOLS" _REMOTE_TOOLS="$REMOTE_TOOLS" _CRYPTO_RISK="$CRYPTO_RISK"
+export _INSTALLED_APPS_RAW="$INSTALLED_APPS_RAW"
 export _KERNEL_VER="$KERNEL_VER" _DAYS_UPDATE="$DAYS_UPDATE" _PENDING_UPDATES="$PENDING_UPDATES" _EOL_STATUS="$EOL_STATUS"
 export _IS_ADMIN="$IS_ADMIN" _ROOT_LOGIN="$ROOT_LOGIN" _SUDO_USERS="$SUDO_USERS"
 export _SERVICES_JSON="$SERVICES_JSON" _NOW="$NOW"
 
 PAYLOAD=$(python3 - <<'PYEOF'
-import json, os
+import json, os, stat as _stat
+try: import pwd as _pwd
+except: _pwd = None
+try: import grp as _grp
+except: _grp = None
 
 def si(v, d=0):
     try: return int(str(v).strip() or d)
@@ -193,6 +213,53 @@ except: dangerous = []
 try: svcs = json.loads(e("_SERVICES_JSON", "[]"))
 except: svcs = []
 
+# ── Installed apps: parse name/version, find binary, read permissions ─────────
+def _find_bin(n):
+    for d in ('/usr/bin','/usr/sbin','/bin','/sbin','/usr/local/bin','/usr/local/sbin','/snap/bin'):
+        p = d + '/' + n
+        if os.path.exists(p): return p
+    return ''
+
+def _perm_str(m):
+    s = ''
+    for r,w,x in [(0o400,0o200,0o100),(0o040,0o020,0o010),(0o004,0o002,0o001)]:
+        s += ('r' if m&r else '-')+('w' if m&w else '-')+('x' if m&x else '-')
+    return s
+
+_CATS = {
+    'nginx':'web','apache2':'web','httpd':'web','lighttpd':'web','caddy':'web',
+    'mysql':'database','postgresql':'database','redis-server':'database','mongod':'database','psql':'database','mariadb':'database',
+    'docker':'container','kubectl':'container','podman':'container','helm':'container','containerd':'container',
+    'python3':'runtime','python':'runtime','node':'runtime','java':'runtime','ruby':'runtime','php':'runtime','perl':'runtime',
+    'git':'devtools','gcc':'devtools','make':'devtools','cmake':'devtools','vim':'devtools','nano':'devtools','code':'devtools','gdb':'devtools',
+    'ssh':'network','sshd':'network','curl':'network','wget':'network','nmap':'network','tcpdump':'network','netcat':'network','nc':'network','rsync':'network','ftp':'network',
+    'ufw':'security','fail2ban':'security','clamav':'security','rkhunter':'security','snort':'security','auditd':'security','suricata':'security','apparmor':'security','chkrootkit':'security',
+}
+
+apps = []
+for _line in e('_INSTALLED_APPS_RAW').strip().split('\n'):
+    if '\t' not in _line: continue
+    _name, _ver = _line.split('\t', 1)
+    _name, _ver = _name.strip(), _ver.strip()
+    if not _name: continue
+    _path = _find_bin(_name)
+    _perms, _owner, _group, _suid = '---------', 'root', 'root', False
+    if _path:
+        try:
+            _st = os.stat(_path)
+            _m = _st.st_mode
+            _perms = _perm_str(_m)
+            _suid = bool(_m & _stat.S_ISUID)
+            if _pwd:
+                try: _owner = _pwd.getpwuid(_st.st_uid).pw_name
+                except: _owner = str(_st.st_uid)
+            if _grp:
+                try: _group = _grp.getgrgid(_st.st_gid).gr_name
+                except: _group = str(_st.st_gid)
+        except: pass
+    apps.append({'name':_name,'version':_ver,'path':_path,'permissions':_perms,'owner':_owner,'group':_group,'suid':_suid,'category':_CATS.get(_name,'system')})
+    if len(apps) >= 50: break
+
 vc = {
   "d1_network":     {"subnet":e("_SUBNET") or None,"gateway":e("_GATEWAY") or None,"dns_servers":cl(e("_DNS_LIST")),"interface_count":si(e("_IFACE_COUNT"),1),"active_connections":si(e("_ACTIVE_CONNS")),"network_zone":e("_NETWORK_ZONE","internal"),"is_wifi":bool(si(e("_IS_WIFI"))),"score":0},
   "d2_identity":    {"local_users":cl(e("_LOCAL_USERS")),"admin_users":cl(e("_ADMIN_USERS")),"ad_domain":e("_AD_DOMAIN") or None,"ad_ou":None,"ad_groups":[],"last_login_user":e("_LAST_LOGIN_USER") or None,"last_login_time":e("_LAST_LOGIN_TIME") or None,"mfa_enabled":None,"score":0},
@@ -204,7 +271,7 @@ vc = {
   "d8_compliance":  {"policy_violations":[],"frameworks":["ISO27001"],"firewall_enabled":eb("_FIREWALL_ENABLED"),"av_present":eb("_AV_PRESENT"),"encryption_enabled":eb("_ENCRYPTION_ENABLED"),"score":0},
   "d9_geo":         {"country":e("_GEO_COUNTRY") or None,"city":e("_GEO_CITY") or None,"isp":e("_GEO_ISP") or None,"timezone_geo":e("_GEO_TZ") or None,"is_vpn":eb("_IS_VPN"),"is_known_location":True,"score":0},
   "d10_traffic":    {"bytes_sent_mb":si(e("_BYTES_SENT_MB")),"bytes_recv_mb":si(e("_BYTES_RECV_MB")),"active_tcp_connections":si(e("_ACTIVE_TCP")),"established_connections":si(e("_TCP_ESTAB")),"listening_ports":si(e("_LISTENING")),"score":0},
-  "d11_application":{"installed_packages":si(e("_PKG_COUNT")),"suspicious_apps":cl(e("_SUSPICIOUS_PROCS")),"dev_tools_present":eb("_DEV_TOOLS"),"remote_access_tools":cl(e("_REMOTE_TOOLS")),"crypto_mining_risk":eb("_CRYPTO_RISK"),"app_reputation_score":85,"score":0},
+  "d11_application":{"installed_packages":si(e("_PKG_COUNT")),"suspicious_apps":cl(e("_SUSPICIOUS_PROCS")),"dev_tools_present":eb("_DEV_TOOLS"),"remote_access_tools":cl(e("_REMOTE_TOOLS")),"crypto_mining_risk":eb("_CRYPTO_RISK"),"app_reputation_score":85,"apps":apps,"score":0},
   "d12_patch":      {"kernel_version":e("_KERNEL_VER") or None,"days_since_update":si(e("_DAYS_UPDATE")),"pending_updates":si(e("_PENDING_UPDATES")),"eol_status":e("_EOL_STATUS","supported"),"patch_level_pct":80,"score":0},
   "d13_privilege":  {"is_admin":eb("_IS_ADMIN"),"root_login_enabled":eb("_ROOT_LOGIN"),"sudo_users":cl(e("_SUDO_USERS")),"service_accounts":[],"privilege_escalation_risk":20,"score":0},
   "collected_at":e("_NOW"),"collection_version":"2.0.0","vector_score":0,

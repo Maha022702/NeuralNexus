@@ -1,3 +1,15 @@
+// ─── Installed Application (collected by agent) ───────────────────────────────
+export interface InstalledApp {
+  name: string
+  version: string
+  path: string
+  permissions: string   // e.g. "rwxr-xr-x"
+  owner: string
+  group: string
+  suid: boolean
+  category: 'web' | 'database' | 'runtime' | 'devtools' | 'network' | 'security' | 'container' | 'system' | string
+}
+
 // ─── Core Asset ───────────────────────────────────────────────────────────────
 export interface Asset {
   id: string
@@ -171,6 +183,7 @@ export interface VectorContext {
     remote_access_tools: string[]
     crypto_mining_risk: boolean
     app_reputation_score: number
+    apps?: InstalledApp[]
     score: number
   }
   d12_patch: {
