@@ -106,7 +106,7 @@ print(json.dumps(payload))
 # ── Send heartbeat ───────────────────────────────────────────
 echo "[AC-COS Agent] Sending heartbeat from $HOSTNAME_VAL ($IP_ADDRESS) → $HEARTBEAT_ENDPOINT"
 
-HTTP_CODE=$(curl -s -o /tmp/nn_response.json -w "%{http_code}" \
+HTTP_CODE=$(curl -s -L -o /tmp/nn_response.json -w "%{http_code}" \
   -X POST "$HEARTBEAT_ENDPOINT" \
   -H "Content-Type: application/json" \
   -H "x-user-id: $USER_ID" \
