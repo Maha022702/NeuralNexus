@@ -5,7 +5,7 @@ import { usePathname } from 'next/navigation'
 import {
   Shield, Activity, AlertTriangle, BarChart2, Server,
   Target, CheckCircle, Zap, Brain, Settings, LogOut,
-  Menu, X, Bell, ChevronRight
+  Menu, X, Bell, ChevronRight, Plug
 } from 'lucide-react'
 
 const navItems = [
@@ -16,6 +16,7 @@ const navItems = [
   { id: 'compliance', label: 'Compliance', href: '/dashboard/compliance', icon: CheckCircle },
   { id: 'playbooks', label: 'Playbooks', href: '/dashboard/playbooks', icon: Zap },
   { id: 'vectors', label: 'Vector Engine', href: '/dashboard/vectors', icon: Brain },
+  { id: 'integrations', label: 'Integrations', href: '/dashboard/integrations', icon: Plug },
 ]
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {

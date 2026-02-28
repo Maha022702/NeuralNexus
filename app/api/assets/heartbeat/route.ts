@@ -1,7 +1,7 @@
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
-import { computeRiskScore } from '@/lib/risk-engine'
-import { HeartbeatPayload } from '@/lib/types/assets'
+import { computeRiskScore, computeVectorScore, buildVectorScores } from '@/lib/risk-engine'
+import { HeartbeatPayload, VectorContext } from '@/lib/types/assets'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -28,16 +28,37 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'hostname and ip_address required' }, { status: 400 })
     }
 
-    // Compute risk score
-    const { score, factors } = computeRiskScore({
-      openPorts: payload.open_ports ?? [],
-      osName: payload.os_name,
-      osVersion: payload.os_version,
-      lastSeen: new Date(),
-      vulnCount: 0,
-      assetType: 'endpoint',
-      isPrivileged: false,
-    })
+    // ── Build & score vector context ──────────────────────────────
+    let score = 0
+    let factors = {}
+    let vectorContext: Partial<VectorContext> | null = null
+
+    if (payload.vector_context && Object.keys(payload.vector_context).length > 0) {
+      // Score each dimension server-side
+      const enriched = buildVectorScores(payload.vector_context)
+      const result = computeVectorScore(enriched)
+      score = result.score
+      factors = result.factors
+      vectorContext = {
+        ...enriched,
+        collected_at: payload.vector_context.collected_at ?? new Date().toISOString(),
+        collection_version: payload.vector_context.collection_version ?? '2.0.0',
+        vector_score: result.score,
+      }
+    } else {
+      // Fallback: legacy 5-factor scoring
+      const result = computeRiskScore({
+        openPorts: payload.open_ports ?? [],
+        osName: payload.os_name,
+        osVersion: payload.os_version,
+        lastSeen: new Date(),
+        vulnCount: 0,
+        assetType: 'endpoint',
+        isPrivileged: false,
+      })
+      score = result.score
+      factors = result.factors
+    }
 
     const assetStatus = score >= 75 ? 'critical' : score >= 50 ? 'warning' : 'active'
 
@@ -62,6 +83,7 @@ export async function POST(req: NextRequest) {
       status: assetStatus,
       is_managed: true,
       agent_version: payload.agent_version,
+      vector_context: vectorContext ?? {},
       updated_at: new Date().toISOString(),
     }
 
@@ -91,7 +113,12 @@ export async function POST(req: NextRequest) {
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-    return NextResponse.json({ asset: data, action: 'updated', risk_score: score })
+    return NextResponse.json({
+      asset: data,
+      action: existing?.id ? 'updated' : 'created',
+      risk_score: score,
+      vector_dimensions: vectorContext ? 13 : 0,
+    })
   } catch (err) {
     return NextResponse.json({ error: String(err) }, { status: 500 })
   }

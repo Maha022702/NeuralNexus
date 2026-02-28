@@ -587,6 +587,7 @@ export default function AssetsPage() {
                 <th className="text-left px-5 py-3 hidden sm:table-cell">IP / MAC</th>
                 <th className="text-left px-5 py-3 hidden md:table-cell">OS</th>
                 <th className="text-left px-5 py-3">Risk</th>
+                <th className="text-left px-5 py-3 hidden xl:table-cell">Vector</th>
                 <th className="text-left px-5 py-3 hidden lg:table-cell">Ports</th>
                 <th className="text-left px-5 py-3">Status</th>
                 <th className="text-left px-5 py-3 hidden md:table-cell">Discovery</th>
@@ -607,7 +608,7 @@ export default function AssetsPage() {
                 ))
               ) : filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="px-5 py-16 text-center">
+                  <td colSpan={10} className="px-5 py-16 text-center">
                     <Server className="w-12 h-12 text-slate-700 mx-auto mb-3" />
                     <p className="text-slate-500 font-medium">No assets found</p>
                     <p className="text-slate-600 text-xs mt-1">Run a discovery scan to populate your inventory</p>
@@ -680,6 +681,20 @@ export default function AssetsPage() {
                           <span className={`text-xs font-bold ${risk.color}`}>{asset.risk_score}</span>
                         </div>
                         <div className={`text-xs mt-0.5 ${risk.color}`}>{risk.label}</div>
+                      </td>
+
+                      {/* Vector score */}
+                      <td className="px-5 py-3 hidden xl:table-cell">
+                        {asset.vector_context && Object.keys(asset.vector_context).length > 0 ? (
+                          <div className="space-y-1">
+                            <span className="px-2 py-0.5 bg-purple-500/10 border border-purple-500/30 text-purple-300 text-xs rounded-full font-mono">
+                              13D
+                            </span>
+                            <div className="text-slate-500 text-xs">enriched</div>
+                          </div>
+                        ) : (
+                          <span className="text-slate-700 text-xs">—</span>
+                        )}
                       </td>
 
                       {/* Open ports */}

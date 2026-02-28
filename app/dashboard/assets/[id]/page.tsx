@@ -2,8 +2,8 @@
 import { useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { Asset, PortInfo, ServiceInfo, RiskFactors } from '@/lib/types/assets'
-import { getRiskLevel } from '@/lib/risk-engine'
+import { Asset, PortInfo, ServiceInfo, RiskFactors, VectorContext } from '@/lib/types/assets'
+import { getRiskLevel, DIMENSION_META } from '@/lib/risk-engine'
 import {
   Server, Monitor, Wifi, Database, Cloud, Cpu,
   ArrowLeft, Shield, AlertTriangle, Clock, Globe,
@@ -114,6 +114,8 @@ export default function AssetDetailPage() {
   const openPorts = (asset.open_ports as PortInfo[]).filter(p => p.state === 'open')
   const services = asset.services as ServiceInfo[]
   const riskFactors = asset.risk_factors as RiskFactors | null
+  const vc = asset.vector_context as VectorContext | null
+  const hasVector = !!vc && typeof vc === 'object' && Object.keys(vc).length > 0
 
   return (
     <div className="p-6 space-y-6">
@@ -338,6 +340,134 @@ export default function AssetDetailPage() {
             </div>
           )}
         </div>
+      </div>
+
+      {/* ── 13D Vector Context Panel ── */}
+      <div className="glass rounded-2xl border border-purple-500/20 p-5 space-y-5">
+        <div className="flex items-center justify-between">
+          <h2 className="text-white font-semibold text-sm flex items-center gap-2">
+            <Shield className="w-5 h-5 text-purple-400" />
+            13-Dimensional Context Vector
+          </h2>
+          <div className="flex items-center gap-3">
+            {hasVector && (
+              <span className="text-slate-500 text-xs">
+                Vector Score: <span className={`font-bold text-sm ${
+                  asset.risk_score >= 75 ? 'text-red-400' :
+                  asset.risk_score >= 50 ? 'text-orange-400' :
+                  asset.risk_score >= 25 ? 'text-yellow-400' : 'text-green-400'
+                }`}>{asset.risk_score} / 100</span>
+              </span>
+            )}
+            <span className={`px-2 py-0.5 rounded-full text-xs border ${
+              hasVector
+                ? 'bg-purple-500/10 border-purple-500/30 text-purple-300'
+                : 'bg-slate-800 border-slate-700 text-slate-500'
+            }`}>
+              {hasVector ? '13/13 dimensions' : 'No vector data yet'}
+            </span>
+          </div>
+        </div>
+
+        {!hasVector ? (
+          <div className="flex flex-col items-center justify-center py-12 text-center">
+            <div className="w-16 h-16 rounded-2xl bg-purple-500/10 border border-purple-500/20 flex items-center justify-center mb-4">
+              <Shield className="w-8 h-8 text-purple-400 opacity-40" />
+            </div>
+            <p className="text-slate-400 font-medium">No vector context collected yet</p>
+            <p className="text-slate-600 text-xs mt-2 max-w-md">
+              Run the AC-COS agent v2.0+ on this machine to collect all 13 dimensions.
+              The agent automatically enriches identity, network, behavioral, and privilege context.
+            </p>
+            <div className="mt-4 px-4 py-2 bg-slate-900 rounded-xl border border-slate-700 font-mono text-xs text-cyan-400">
+              NEURALNEXUS_USER_ID=... ./agent.sh
+            </div>
+          </div>
+        ) : (
+          <>
+            {/* Dimension grid */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+              {DIMENSION_META.map(dim => {
+                const dimData = vc![dim.key as keyof VectorContext] as Record<string, unknown> | undefined
+                const score = (dimData?.score as number) ?? 0
+                const pct = Math.min((score / dim.max) * 100, 100)
+                const barColor = pct >= 80 ? 'bg-red-500' : pct >= 60 ? 'bg-orange-500' : pct >= 40 ? 'bg-yellow-500' : pct >= 20 ? 'bg-cyan-500' : 'bg-green-500'
+                const borderColor = pct >= 80 ? 'border-red-500/20' : pct >= 60 ? 'border-orange-500/20' : pct >= 40 ? 'border-yellow-500/20' : 'border-slate-700/30'
+
+                // Build detail lines from dimension data
+                const details: { k: string; v: string }[] = []
+                if (dimData) {
+                  Object.entries(dimData).forEach(([k, v]) => {
+                    if (k === 'score') return
+                    if (v === null || v === undefined || v === '') return
+                    const label = k.replace(/_/g, ' ')
+                    let val = ''
+                    if (typeof v === 'boolean') val = v ? 'yes' : 'no'
+                    else if (Array.isArray(v)) val = v.length > 0 ? v.slice(0, 2).join(', ') + (v.length > 2 ? ` +${v.length - 2}` : '') : 'none'
+                    else val = String(v)
+                    details.push({ k: label, v: val })
+                  })
+                }
+
+                return (
+                  <div key={dim.key} className={`glass rounded-xl border ${borderColor} p-4 space-y-3`}>
+                    {/* Dimension header */}
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <span className="text-2xl">{dim.icon}</span>
+                        <div>
+                          <div className="text-white text-xs font-semibold">{dim.label}</div>
+                          <div className="text-slate-600 text-xs font-mono">{dim.key.toUpperCase()}</div>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <div className={`text-lg font-bold ${
+                          pct >= 80 ? 'text-red-400' : pct >= 60 ? 'text-orange-400' : pct >= 40 ? 'text-yellow-400' : 'text-green-400'
+                        }`}>{score}</div>
+                        <div className="text-slate-600 text-xs">/ {dim.max}</div>
+                      </div>
+                    </div>
+
+                    {/* Score bar */}
+                    <div className="h-1.5 bg-slate-800 rounded-full overflow-hidden">
+                      <div
+                        className={`h-full rounded-full transition-all duration-700 ${barColor}`}
+                        style={{ width: `${pct}%` }}
+                      />
+                    </div>
+
+                    {/* Detail fields */}
+                    {details.length > 0 && (
+                      <div className="space-y-1">
+                        {details.slice(0, 4).map(d => (
+                          <div key={d.k} className="flex justify-between items-start gap-2">
+                            <span className="text-slate-600 text-xs capitalize flex-shrink-0">{d.k}</span>
+                            <span className="text-slate-400 text-xs text-right truncate max-w-24 font-mono" title={d.v}>{d.v}</span>
+                          </div>
+                        ))}
+                        {details.length > 4 && (
+                          <div className="text-slate-700 text-xs">+{details.length - 4} more fields</div>
+                        )}
+                      </div>
+                    )}
+
+                    {dimData === undefined && (
+                      <p className="text-slate-700 text-xs italic">Not collected</p>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+
+            {/* Footer */}
+            {vc && (vc as unknown as Record<string,unknown>).collected_at && (
+              <div className="flex items-center justify-between text-xs text-slate-600 pt-2 border-t border-slate-800">
+                <span>Collected: {new Date(String((vc as unknown as Record<string,unknown>).collected_at)).toLocaleString()}</span>
+                <span>Agent v{String((vc as unknown as Record<string,unknown>).collection_version ?? '2.0.0')}</span>
+              </div>
+            )}
+          </>
+        )}
       </div>
     </div>
   )
