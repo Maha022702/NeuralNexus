@@ -1,26 +1,20 @@
 #!/usr/bin/env bash
 # ============================================================
 # NeuralNexus AC-COS Agent — Linux / macOS
-# Version: 1.0.0
+# Version: 1.0.1
 #
-# Usage:
+# Usage (one-time test):
 #   chmod +x agent.sh
-#   NEURALNEXUS_URL="https://neuralnexus.org.in" \
-#   NEURALNEXUS_USER_ID="your-supabase-user-id" \
-#   ./agent.sh
+#   NEURALNEXUS_USER_ID="your-user-id" ./agent.sh
 #
-# To run as a persistent service (every 60s):
-#   watch -n 60 ./agent.sh
-# Or add to crontab:
-#   * * * * * /path/to/agent.sh >> /var/log/neuralnexus-agent.log 2>&1
+# Run every 60 seconds (persistent):
+#   watch -n 60 env NEURALNEXUS_USER_ID="your-user-id" ./agent.sh
 # ============================================================
 
-set -euo pipefail
-
 # ── Config ──────────────────────────────────────────────────
-NEURALNEXUS_URL="${NEURALNEXUS_URL:-http://localhost:3001}"
+NEURALNEXUS_URL="${NEURALNEXUS_URL:-https://neuralnexus.org.in}"
 USER_ID="${NEURALNEXUS_USER_ID:-}"
-AGENT_VERSION="1.0.0"
+AGENT_VERSION="1.0.1"
 HEARTBEAT_ENDPOINT="${NEURALNEXUS_URL}/api/assets/heartbeat"
 
 if [[ -z "$USER_ID" ]]; then

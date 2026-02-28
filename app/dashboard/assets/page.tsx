@@ -205,18 +205,36 @@ function ScanPanel({
             {/* Run commands */}
             {userId && (
               <div className="space-y-1.5">
-                <p className="text-slate-500 text-xs">Run on your machine:</p>
-                <div className="rounded-lg bg-slate-950 border border-slate-800 p-2 group relative">
-                  <code className="text-green-400 text-xs break-all">
-                    NEURALNEXUS_USER_ID=<span className="text-cyan-300">{userId}</span> bash agent.sh
+                <p className="text-slate-500 text-xs">Copy &amp; run on the machine you want to monitor:</p>
+                {/* Linux / macOS */}
+                <div className="rounded-lg bg-slate-950 border border-slate-800 p-3 relative">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Terminal className="w-3 h-3 text-green-400" />
+                    <span className="text-green-400 text-xs font-medium">Linux / macOS</span>
+                  </div>
+                  <code className="text-xs text-slate-300 block space-y-1">
+                    <div><span className="text-slate-600">1.</span> chmod +x agent.sh</div>
+                    <div><span className="text-slate-600">2.</span> NEURALNEXUS_USER_ID=<span className="text-cyan-300 select-all">{userId}</span> ./agent.sh</div>
                   </code>
-                  <CopyButton text={`NEURALNEXUS_USER_ID=${userId} bash agent.sh`} className="absolute top-2 right-2 opacity-0 group-hover:opacity-100" />
+                  <CopyButton
+                    text={`chmod +x agent.sh && NEURALNEXUS_USER_ID=${userId} ./agent.sh`}
+                    className="absolute top-2 right-2"
+                  />
                 </div>
-                <div className="rounded-lg bg-slate-950 border border-slate-800 p-2 group relative">
-                  <code className="text-blue-400 text-xs break-all">
-                    $env:NEURALNEXUS_USER_ID="<span className="text-cyan-300">{userId}</span>"; .\agent.ps1
+                {/* Windows */}
+                <div className="rounded-lg bg-slate-950 border border-slate-800 p-3 relative">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Terminal className="w-3 h-3 text-blue-400" />
+                    <span className="text-blue-400 text-xs font-medium">Windows (PowerShell as Admin)</span>
+                  </div>
+                  <code className="text-xs text-slate-300 block space-y-1">
+                    <div><span className="text-slate-600">1.</span> Set-ExecutionPolicy RemoteSigned -Scope CurrentUser</div>
+                    <div><span className="text-slate-600">2.</span> $env:NEURALNEXUS_USER_ID="<span className="text-cyan-300 select-all">{userId}</span>"; .\agent.ps1</div>
                   </code>
-                  <CopyButton text={`$env:NEURALNEXUS_USER_ID="${userId}"; .\agent.ps1`} className="absolute top-2 right-2 opacity-0 group-hover:opacity-100" />
+                  <CopyButton
+                    text={`$env:NEURALNEXUS_USER_ID="${userId}"; .\\agent.ps1`}
+                    className="absolute top-2 right-2"
+                  />
                 </div>
               </div>
             )}

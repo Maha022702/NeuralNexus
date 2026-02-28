@@ -65,26 +65,31 @@ export async function POST(req: NextRequest) {
       updated_at: new Date().toISOString(),
     }
 
-    // Upsert by hostname + user_id
-    const { data, error } = await supabase
+    // Upsert by hostname + user_id (safe — no UNIQUE constraint needed)
+    const { data: existing } = await supabase
       .from('assets')
-      .upsert(assetData, {
-        onConflict: 'hostname,user_id',
-        ignoreDuplicates: false,
-      })
-      .select()
-      .single()
+      .select('id, first_seen')
+      .eq('hostname', assetData.hostname)
+      .eq('user_id', userId)
+      .maybeSingle()
 
-    if (error) {
-      // Fallback: try insert
-      const { data: inserted, error: insertError } = await supabase
+    let data, error
+    if (existing?.id) {
+      ;({ data, error } = await supabase
+        .from('assets')
+        .update({ ...assetData, updated_at: new Date().toISOString() })
+        .eq('id', existing.id)
+        .select()
+        .single())
+    } else {
+      ;({ data, error } = await supabase
         .from('assets')
         .insert({ ...assetData, first_seen: new Date().toISOString() })
         .select()
-        .single()
-      if (insertError) return NextResponse.json({ error: insertError.message }, { status: 500 })
-      return NextResponse.json({ asset: inserted, action: 'created' }, { status: 201 })
+        .single())
     }
+
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
     return NextResponse.json({ asset: data, action: 'updated', risk_score: score })
   } catch (err) {
