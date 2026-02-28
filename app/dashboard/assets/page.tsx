@@ -339,6 +339,9 @@ export default function AssetsPage() {
     if (!userId) return
     loadAssets(userId)
 
+    // Auto-refresh every 30s to catch agent heartbeats
+    const refreshInterval = setInterval(() => loadAssets(userId), 30000)
+
     // ── Supabase Realtime subscription ────────────────────────
     const channel = supabase
       .channel('assets-realtime')
@@ -369,7 +372,10 @@ export default function AssetsPage() {
       })
       .subscribe()
 
-    return () => { supabase.removeChannel(channel) }
+    return () => {
+      clearInterval(refreshInterval)
+      supabase.removeChannel(channel)
+    }
   }, [userId])
 
   // Start scan via SSE

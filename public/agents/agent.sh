@@ -104,23 +104,25 @@ print(json.dumps(payload))
 " 2>/dev/null)
 
 # ── Send heartbeat ───────────────────────────────────────────
-echo "[AC-COS Agent] Sending heartbeat from $HOSTNAME_VAL ($IP_ADDRESS)..."
+echo "[AC-COS Agent] Sending heartbeat from $HOSTNAME_VAL ($IP_ADDRESS) → $HEARTBEAT_ENDPOINT"
 
-RESPONSE=$(curl -s -w "\n%{http_code}" \
+HTTP_CODE=$(curl -s -o /tmp/nn_response.json -w "%{http_code}" \
   -X POST "$HEARTBEAT_ENDPOINT" \
   -H "Content-Type: application/json" \
   -H "x-user-id: $USER_ID" \
   -d "$PAYLOAD" \
   --connect-timeout 10 \
-  --max-time 30)
+  --max-time 30 2>/dev/null)
 
-HTTP_CODE=$(echo "$RESPONSE" | tail -1)
-BODY=$(echo "$RESPONSE" | head -1)
+BODY=$(cat /tmp/nn_response.json 2>/dev/null || echo "{}")
 
 if [[ "$HTTP_CODE" == "200" || "$HTTP_CODE" == "201" ]]; then
-  RISK=$(echo "$BODY" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('risk_score','?'))" 2>/dev/null || echo "?")
-  echo "[AC-COS Agent] ✅ Heartbeat sent. Risk score: $RISK | Status: $HTTP_CODE"
+  RISK=$(echo "$BODY" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('risk_score', d.get('asset',{}).get('risk_score','?')))" 2>/dev/null || echo "?")
+  ACTION=$(echo "$BODY" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('action','ok'))" 2>/dev/null || echo "ok")
+  echo "[AC-COS Agent] ✅ Success ($ACTION) — Risk score: $RISK | HTTP $HTTP_CODE"
 else
-  echo "[AC-COS Agent] ❌ Failed. HTTP $HTTP_CODE: $BODY"
-  exit 1
+  echo "[AC-COS Agent] ❌ Failed — HTTP $HTTP_CODE"
+  echo "[AC-COS Agent]    Response: $BODY"
+  echo "[AC-COS Agent]    Endpoint: $HEARTBEAT_ENDPOINT"
+  echo "[AC-COS Agent]    Check: is NEURALNEXUS_URL set correctly?"
 fi
