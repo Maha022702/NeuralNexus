@@ -21,10 +21,13 @@ echo "[AC-COS Agent] v${AGENT_VERSION} collecting 13-dimensional context..."
 
 # Core identity
 HOSTNAME_VAL=$(hostname -f 2>/dev/null || hostname)
-UPTIME_SECONDS=$(awk "{print int(\$1)}" /proc/uptime 2>/dev/null || echo 0)
+UPTIME_SECONDS=$(awk '{print int($1)}' /proc/uptime 2>/dev/null || echo 0)
 OS_ARCH=$(uname -m)
-IP_ADDRESS=$(ip route get 1.1.1.1 2>/dev/null | awk "{for(i=1;i<=NF;i++) if(\$i=="src") {print \$(i+1); exit}}" || echo "127.0.0.1")
-MAC_ADDRESS=$(ip link 2>/dev/null | grep -A1 "$(ip route get 1.1.1.1 2>/dev/null | awk "{for(i=1;i<=NF;i++) if(\$i=="dev") {print \$(i+1); exit}}")" | grep "link/ether" | awk "{print \$2}" | head -1 || echo "")
+IP_ADDRESS=$(ip route get 1.1.1.1 2>/dev/null | awk '/src/{for(i=1;i<=NF;i++) if($i=="src"){print $(i+1); exit}}' | head -1)
+[[ -z "$IP_ADDRESS" ]] && IP_ADDRESS=$(hostname -I 2>/dev/null | awk '{print $1}')
+[[ -z "$IP_ADDRESS" ]] && IP_ADDRESS="127.0.0.1"
+IFACE=$(ip route get 1.1.1.1 2>/dev/null | awk '/dev/{for(i=1;i<=NF;i++) if($i=="dev"){print $(i+1); exit}}' | head -1)
+MAC_ADDRESS=$(ip link show "$IFACE" 2>/dev/null | awk '/link\/ether/{print $2}' | head -1 || echo "")
 FQDN=$(hostname -f 2>/dev/null || echo "$HOSTNAME_VAL")
 if [[ -f /etc/os-release ]]; then
   OS_NAME=$(. /etc/os-release && echo "${NAME:-Linux}")
@@ -36,11 +39,10 @@ else
 fi
 
 # D1 Network
-GATEWAY=$(ip route 2>/dev/null | awk "/default/ {print \$3; exit}" || echo "")
-DNS_LIST=$(grep "^nameserver" /etc/resolv.conf 2>/dev/null | awk "{print \$2}" | head -3 | tr "
-" "," | sed "s/,$//" || echo "")
+GATEWAY=$(ip route 2>/dev/null | awk '/default/{print $3; exit}' || echo "")
+DNS_LIST=$(grep "^nameserver" /etc/resolv.conf 2>/dev/null | awk '{print $2}' | head -3 | tr '\n' ',' | sed 's/,$//' || echo "")
 IFACE_COUNT=$(ip link 2>/dev/null | grep -c "^[0-9]" || echo 1)
-ACTIVE_CONNS=$(ss -s 2>/dev/null | awk "/estab/ {print \$4}" | tr -d "," || echo 0)
+ACTIVE_CONNS=$(ss -s 2>/dev/null | awk '/estab/{print $4}' | tr -d ',' | head -1 || echo 0)
 IS_WIFI=$(iwconfig 2>/dev/null | grep -c "ESSID:" || echo 0)
 NETWORK_ZONE="internal"
 if curl -s --connect-timeout 2 http://169.254.169.254/latest/meta-data/ &>/dev/null; then
@@ -50,28 +52,24 @@ elif [[ "$IP_ADDRESS" != 10.* ]] && [[ "$IP_ADDRESS" != 192.168.* ]]; then
 fi
 
 # D2 Identity
-LOCAL_USERS=$(awk -F: "\$3>=1000 && \$3<65534 {print \$1}" /etc/passwd 2>/dev/null | head -10 | tr "
-" "," | sed "s/,$//" || echo "")
-ADMIN_USERS=$(getent group sudo wheel admin 2>/dev/null | grep -v "^$" | cut -d: -f4 | tr "," "
-" | sort -u | head -10 | tr "
-" "," | sed "s/,$//" || echo "")
-LAST_LOGIN_USER=$(last -n 1 2>/dev/null | head -1 | awk "{print \$1}" || echo "")
+LOCAL_USERS=$(awk -F: '$3>=1000 && $3<65534 {print $1}' /etc/passwd 2>/dev/null | head -10 | tr '\n' ',' | sed 's/,$//' || echo "")
+ADMIN_USERS=$(getent group sudo wheel admin 2>/dev/null | grep -v "^$" | cut -d: -f4 | tr ',' '\n' | sort -u | head -10 | tr '\n' ',' | sed 's/,$//' || echo "")
+LAST_LOGIN_USER=$(last -n 1 2>/dev/null | head -1 | awk '{print $1}' || echo "")
 LAST_LOGIN_TIME=$(last -n 1 2>/dev/null | head -1 | awk '{print $4" "$5" "$6" "$7}' || echo "")
-AD_DOMAIN=$(realm list 2>/dev/null | grep "domain-name" | awk "{print \$2}" | head -1 || echo "")
+AD_DOMAIN=$(realm list 2>/dev/null | grep "domain-name" | awk '{print $2}' | head -1 || echo "")
 
 # D3 Behavior
 FAILED_LOGINS=0
 [[ -f /var/log/auth.log ]] && FAILED_LOGINS=$(grep -c "Failed password" /var/log/auth.log 2>/dev/null || echo 0)
 [[ -f /var/log/secure   ]] && FAILED_LOGINS=$(grep -c "Failed password" /var/log/secure 2>/dev/null || echo 0)
 PROCESS_COUNT=$(ps aux 2>/dev/null | wc -l || echo 0)
-LOAD_AVG=$(awk "{print \$1}" /proc/loadavg 2>/dev/null || echo 0)
-SUSPICIOUS_PROCS=$(ps aux 2>/dev/null | grep -iE "xmrig|cryptominer|minerd|masscan" | grep -v grep | awk "{print \$11}" | head -3 | tr "
-" "," | sed "s/,$//" || echo "")
+LOAD_AVG=$(awk '{print $1}' /proc/loadavg 2>/dev/null || echo 0)
+SUSPICIOUS_PROCS=$(ps aux 2>/dev/null | grep -iE "xmrig|cryptominer|minerd|masscan" | grep -v grep | awk '{print $11}' | head -3 | tr '\n' ',' | sed 's/,$//' || echo "")
 
 # D4 Temporal
-TIMEZONE=$(timedatectl 2>/dev/null | grep "Time zone" | awk "{print \$3}" || cat /etc/timezone 2>/dev/null || echo "UTC")
-LAST_REBOOT=$(who -b 2>/dev/null | awk "{print \$3" "\$4}" || echo "")
-UPTIME_DAYS=$(awk "{printf "%.1f", \$1/86400}" /proc/uptime 2>/dev/null || echo 0)
+TIMEZONE=$(timedatectl 2>/dev/null | grep "Time zone" | awk '{print $3}' || cat /etc/timezone 2>/dev/null || echo "UTC")
+LAST_REBOOT=$(who -b 2>/dev/null | awk '{print $3" "$4}' || echo "")
+UPTIME_DAYS=$(awk '{printf "%.1f\n", $1/86400}' /proc/uptime 2>/dev/null || echo 0)
 COLLECTION_HOUR=$(date +%-H 2>/dev/null || echo 12)
 IS_BUSINESS_HOURS=false
 [[ "$COLLECTION_HOUR" -ge 9 && "$COLLECTION_HOUR" -le 17 ]] && IS_BUSINESS_HOURS=true
@@ -104,8 +102,8 @@ IS_VPN=false
 [[ "$GEO_ISP" == *VPN* || "$GEO_ISP" == *Mullvad* || "$GEO_ISP" == *ExpressVPN* ]] && IS_VPN=true
 
 # D10 Traffic
-BYTES_SENT_MB=$(awk "NR>2 {s+=\$10} END{printf "%d",s/1048576}" /proc/net/dev 2>/dev/null || echo 0)
-BYTES_RECV_MB=$(awk "NR>2 {s+=\$2}  END{printf "%d",s/1048576}" /proc/net/dev 2>/dev/null || echo 0)
+BYTES_SENT_MB=$(awk 'NR>2{s+=$10} END{printf "%d\n",s/1048576}' /proc/net/dev 2>/dev/null || echo 0)
+BYTES_RECV_MB=$(awk 'NR>2{s+=$2}  END{printf "%d\n",s/1048576}' /proc/net/dev 2>/dev/null || echo 0)
 TCP_ESTAB=$(ss -tn state established 2>/dev/null | grep -c ESTAB || echo 0)
 ACTIVE_TCP=$(ss -tn 2>/dev/null | grep -cv State || echo 0)
 LISTENING=$(ss -tlnp 2>/dev/null | grep -c LISTEN || echo 0)
@@ -136,12 +134,10 @@ echo "$OS_LOWER" | grep -qE "ubuntu 18|centos 7|windows 10" && EOL_STATUS="exten
 IS_ADMIN=false; [[ $(id -u) -eq 0 ]] && IS_ADMIN=true
 ROOT_LOGIN=false
 grep -qE "^PermitRootLogin yes" /etc/ssh/sshd_config 2>/dev/null && ROOT_LOGIN=true
-SUDO_USERS=$(getent group sudo wheel 2>/dev/null | cut -d: -f4 | tr "," "
-" | sort -u | tr "
-" "," | sed "s/,$//" || echo "")
+SUDO_USERS=$(getent group sudo wheel 2>/dev/null | cut -d: -f4 | tr ',' '\n' | sort -u | tr '\n' ',' | sed 's/,$//' || echo "")
 
 # Services
-SERVICES_JSON=$(systemctl list-units --type=service --state=running --no-pager --no-legend 2>/dev/null | awk "{print \$1}" | sed "s/.service//" | head -10 | python3 -c "import sys,json; print(json.dumps([{'name':l.strip(),'version':'unknown','status':'running'} for l in sys.stdin if l.strip()]))" 2>/dev/null || echo "[]")
+SERVICES_JSON=$(systemctl list-units --type=service --state=running --no-pager --no-legend 2>/dev/null | awk '{print $1}' | sed 's/.service$//' | head -10 | python3 -c "import sys,json; print(json.dumps([{'name':l.strip(),'version':'unknown','status':'running'} for l in sys.stdin if l.strip()]))" 2>/dev/null || echo "[]")
 
 NOW=$(date -u +"%Y-%m-%dT%H:%M:%SZ" 2>/dev/null || echo "$(date -u)")
 
