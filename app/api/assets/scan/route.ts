@@ -128,6 +128,25 @@ function sseMsg(data: Record<string, unknown>) {
   return `data: ${JSON.stringify(data)}\n\n`
 }
 
+// Safe upsert — no UNIQUE constraint needed
+async function upsertAssetRecord(record: Record<string, unknown>) {
+  const { data: existing } = await supabase
+    .from('assets')
+    .select('id')
+    .eq('hostname', record.hostname as string)
+    .eq('user_id', record.user_id as string)
+    .maybeSingle()
+  if (existing?.id) {
+    return supabase
+      .from('assets')
+      .update({ ...record, updated_at: new Date().toISOString() })
+      .eq('id', existing.id)
+      .select()
+      .single()
+  }
+  return supabase.from('assets').insert(record).select().single()
+}
+
 /**
  * POST /api/assets/scan
  * Streams Server-Sent Events (SSE) with real-time discovery progress.
@@ -223,11 +242,9 @@ export async function POST(req: NextRequest) {
           tags: ['discovered', 'localhost'],
         }
 
-        const { data: insertedLocal, error: localErr } = await supabase
-          .from('assets')
-          .upsert({ ...localAsset, updated_at: new Date().toISOString() }, { onConflict: 'hostname,user_id', ignoreDuplicates: false })
-          .select()
-          .single()
+        const { data: insertedLocal, error: localErr } = await upsertAssetRecord(
+          { ...localAsset, updated_at: new Date().toISOString() }
+        )
 
         if (!localErr && insertedLocal) {
           assetsFound++
@@ -288,11 +305,7 @@ export async function POST(req: NextRequest) {
             updated_at: new Date().toISOString(),
           }
 
-          const { data: upserted, error: upsertErr } = await supabase
-            .from('assets')
-            .upsert(assetRecord, { onConflict: 'hostname,user_id', ignoreDuplicates: false })
-            .select()
-            .single()
+          const { data: upserted, error: upsertErr } = await upsertAssetRecord(assetRecord)
 
           if (!upsertErr && upserted) {
             assetsFound++
