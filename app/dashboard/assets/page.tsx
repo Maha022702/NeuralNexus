@@ -9,7 +9,7 @@ import {
   Server, Wifi, Database, Monitor, Cloud, Cpu,
   Search, Filter, RefreshCw, Download, Play, Square,
   ChevronRight, AlertTriangle, CheckCircle, Clock,
-  Terminal, ExternalLink, Plus, Trash2, Eye
+  Terminal, ExternalLink, Plus, Trash2, Eye, Copy, Check
 } from 'lucide-react'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -69,6 +69,28 @@ function exportCSV(assets: Asset[]) {
   const a = document.createElement('a')
   a.href = url; a.download = `ac-cos-assets-${Date.now()}.csv`; a.click()
   URL.revokeObjectURL(url)
+}
+
+// ── Copy Button ───────────────────────────────────────────────────────────────
+function CopyButton({ text, className = '' }: { text: string; className?: string }) {
+  const [copied, setCopied] = useState(false)
+  const copy = () => {
+    navigator.clipboard.writeText(text)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
+  return (
+    <button
+      onClick={copy}
+      className={`flex items-center gap-1 px-2 py-1 rounded-lg text-xs transition-all ${
+        copied
+          ? 'bg-green-500/20 text-green-400 border border-green-500/30'
+          : 'bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white border border-slate-700'
+      } ${className}`}
+    >
+      {copied ? <><Check className="w-3 h-3" />Copied!</> : <><Copy className="w-3 h-3" />Copy</>}
+    </button>
+  )
 }
 
 // ── Scan Panel ────────────────────────────────────────────────────────────────
@@ -166,29 +188,65 @@ function ScanPanel({
           )}
 
           {/* Agent install section */}
-          <div className="mt-3 p-3 rounded-xl bg-purple-500/5 border border-purple-500/20">
-            <p className="text-purple-300 text-xs font-medium mb-2">📡 Push Agent — Install on endpoints</p>
-            <div className="space-y-1.5">
+          <div className="mt-3 p-3 rounded-xl bg-purple-500/5 border border-purple-500/20 space-y-3">
+            <p className="text-purple-300 text-xs font-medium">📡 Push Agent — Install on endpoints</p>
+
+            {/* User ID box */}
+            <div className="rounded-lg bg-slate-950 border border-cyan-500/20 p-3">
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-slate-500 text-xs">Your User ID</span>
+                <CopyButton text={userId} />
+              </div>
+              <div className="font-mono text-xs text-cyan-300 break-all select-all">
+                {userId || 'Loading...'}
+              </div>
+            </div>
+
+            {/* Run commands */}
+            {userId && (
+              <div className="space-y-1.5">
+                <p className="text-slate-500 text-xs">Run on your machine:</p>
+                <div className="rounded-lg bg-slate-950 border border-slate-800 p-2 group relative">
+                  <code className="text-green-400 text-xs break-all">
+                    NEURALNEXUS_USER_ID=<span className="text-cyan-300">{userId}</span> bash agent.sh
+                  </code>
+                  <CopyButton text={`NEURALNEXUS_USER_ID=${userId} bash agent.sh`} className="absolute top-2 right-2 opacity-0 group-hover:opacity-100" />
+                </div>
+                <div className="rounded-lg bg-slate-950 border border-slate-800 p-2 group relative">
+                  <code className="text-blue-400 text-xs break-all">
+                    $env:NEURALNEXUS_USER_ID="<span className="text-cyan-300">{userId}</span>"; .\agent.ps1
+                  </code>
+                  <CopyButton text={`$env:NEURALNEXUS_USER_ID="${userId}"; .\agent.ps1`} className="absolute top-2 right-2 opacity-0 group-hover:opacity-100" />
+                </div>
+              </div>
+            )}
+
+            <div className="flex gap-2">
               <a
                 href="/agents/agent.sh"
                 download
-                className="flex items-center justify-between px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 transition-colors text-xs text-slate-300"
+                className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 transition-colors text-xs text-slate-300"
               >
-                <span className="flex items-center gap-2"><Terminal className="w-3 h-3 text-green-400" />Linux / macOS agent.sh</span>
-                <Download className="w-3 h-3 text-slate-500" />
+                <Terminal className="w-3 h-3 text-green-400" />Linux/macOS
+                <Download className="w-3 h-3 text-slate-500 ml-auto" />
               </a>
               <a
                 href="/agents/agent.ps1"
                 download
-                className="flex items-center justify-between px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 transition-colors text-xs text-slate-300"
+                className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 transition-colors text-xs text-slate-300"
               >
-                <span className="flex items-center gap-2"><Terminal className="w-3 h-3 text-blue-400" />Windows agent.ps1</span>
-                <Download className="w-3 h-3 text-slate-500" />
+                <Terminal className="w-3 h-3 text-blue-400" />Windows
+                <Download className="w-3 h-3 text-slate-500 ml-auto" />
+              </a>
+              <a
+                href="/agents/README.md"
+                target="_blank"
+                className="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 transition-colors text-xs text-slate-400"
+                title="Full setup guide"
+              >
+                Docs
               </a>
             </div>
-            <p className="text-slate-600 text-xs mt-2">
-              Set <code className="text-cyan-400">NEURALNEXUS_USER_ID</code> env var before running
-            </p>
           </div>
         </div>
 
